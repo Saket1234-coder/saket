@@ -1,0 +1,1502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>saket is = god coder</title>
+    <style>
+.inventory-bar {
+    position: absolute;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: row;
+    gap: 5px;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 10px;
+    border-radius: 5px;
+}
+
+.inventory-bar .inventory-item {
+    width: 50px; /* Adjust size for full icons */
+    height: 50px;
+    background: #333;
+    border: 2px solid #555;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 12px;
+    cursor: pointer;
+    background-size: cover; /* Ensure icons fit the item */
+    background-position: center;
+}
+
+.inventory-bar .inventory-item.selected {
+    border-color: yellow;
+}
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100%;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        .hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 14px;
+            text-shadow: 2px 2px 2px #000;
+            pointer-events: none;
+        }
+        .crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 20px;
+            text-align: center;
+            pointer-events: none;
+        }
+        .instructions {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        .block-selector {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="inventory-bar">
+        <div id="inventoryContainer"></div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <div class="hud">
+        <div id="fpsCounter">FPS: 0</div>
+        <div id="positionDisplay">Position: 0, 0, 0</div>
+    </div>
+    <div class="crosshair">+</div>
+    <div class="instructions">
+        arrowkeys: Move | Space: Jump | Click: Break block | Right-click: Place block | E: Change block type
+    </div>
+    <div class="block-selector">
+        Current Block: <span id="currentBlock">Stone</span>
+    </div>
+
+    <script>
+        // Matrix library - minimal implementation
+        const mat4 = {
+            create: function() {
+                return new Float32Array(16);
+            },
+            perspective: function(out, fovy, aspect, near, far) {
+                const f = 1.0 / Math.tan(fovy / 2);
+                out[0] = f / aspect;
+                out[1] = 0;
+                out[2] = 0;
+                out[3] = 0;
+                out[4] = 0;
+                out[5] = f;
+                out[6] = 0;
+                out[7] = 0;
+                out[8] = 0;
+                out[9] = 0;
+                out[10] = (far + near) / (near - far);
+                out[11] = -1;
+                out[12] = 0;
+                out[13] = 0;
+                out[14] = (2 * far * near) / (near - far);
+                out[15] = 0;
+                return out;
+            },
+            lookAt: function(out, eye, center, up) {
+                let x0, x1, x2, y0, y1, y2, z0, z1, z2, len;
+                
+                z0 = eye[0] - center[0];
+                z1 = eye[1] - center[1];
+                z2 = eye[2] - center[2];
+                
+                len = 1 / Math.sqrt(z0 * z0 + z1 * z1 + z2 * z2);
+                z0 *= len;
+                z1 *= len;
+                z2 *= len;
+                
+                x0 = up[1] * z2 - up[2] * z1;
+                x1 = up[2] * z0 - up[0] * z2;
+                x2 = up[0] * z1 - up[1] * z0;
+                
+                len = Math.sqrt(x0 * x0 + x1 * x1 + x2 * x2);
+                if (!len) {
+                    x0 = 0;
+                    x1 = 0;
+                    x2 = 0;
+                } else {
+                    len = 1 / len;
+                    x0 *= len;
+                    x1 *= len;
+                    x2 *= len;
+                }
+                
+                y0 = z1 * x2 - z2 * x1;
+                y1 = z2 * x0 - z0 * x2;
+                y2 = z0 * x1 - z1 * x0;
+                
+                len = Math.sqrt(y0 * y0 + y1 * y1 + y2 * y2);
+                if (!len) {
+                    y0 = 0;
+                    y1 = 0;
+                    y2 = 0;
+                } else {
+                    len = 1 / len;
+                    y0 *= len;
+                    y1 *= len;
+                    y2 *= len;
+                }
+                
+                out[0] = x0;
+                out[1] = y0;
+                out[2] = z0;
+                out[3] = 0;
+                out[4] = x1;
+                out[5] = y1;
+                out[6] = z1;
+                out[7] = 0;
+                out[8] = x2;
+                out[9] = y2;
+                out[10] = z2;
+                out[11] = 0;
+                out[12] = -(x0 * eye[0] + x1 * eye[1] + x2 * eye[2]);
+                out[13] = -(y0 * eye[0] + y1 * eye[1] + y2 * eye[2]);
+                out[14] = -(z0 * eye[0] + z1 * eye[1] + z2 * eye[2]);
+                out[15] = 1;
+                
+                return out;
+            },
+            identity: function(out) {
+                out[0] = 1;
+                out[1] = 0;
+                out[2] = 0;
+                out[3] = 0;
+                out[4] = 0;
+                out[5] = 1;
+                out[6] = 0;
+                out[7] = 0;
+                out[8] = 0;
+                out[9] = 0;
+                out[10] = 1;
+                out[11] = 0;
+                out[12] = 0;
+                out[13] = 0;
+                out[14] = 0;
+                out[15] = 1;
+                return out;
+            },
+            translate: function(out, a, v) {
+                let a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3],
+                    a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7],
+                    a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
+                
+                out[0] = a00;
+                out[1] = a01;
+                out[2] = a02;
+                out[3] = a03;
+                out[4] = a10;
+                out[5] = a11;
+                out[6] = a12;
+                out[7] = a13;
+                out[8] = a20;
+                out[9] = a21;
+                out[10] = a22;
+                out[11] = a23;
+                out[12] = a00 * v[0] + a10 * v[1] + a20 * v[2] + a[12];
+                out[13] = a01 * v[0] + a11 * v[1] + a21 * v[2] + a[13];
+                out[14] = a02 * v[0] + a12 * v[1] + a22 * v[2] + a[14];
+                out[15] = a03 * v[0] + a13 * v[1] + a23 * v[2] + a[15];
+                
+                return out;
+            },
+            copy: function(out, a) {
+                out[0] = a[0];
+                out[1] = a[1];
+                out[2] = a[2];
+                out[3] = a[3];
+                out[4] = a[4];
+                out[5] = a[5];
+                out[6] = a[6];
+                out[7] = a[7];
+                out[8] = a[8];
+                out[9] = a[9];
+                out[10] = a[10];
+                out[11] = a[11];
+                out[12] = a[12];
+                out[13] = a[13];
+                out[14] = a[14];
+                out[15] = a[15];
+                return out;
+            },
+            rotate: function(out, a, rad, axis) {
+                let x = axis[0], y = axis[1], z = axis[2],
+                    len = Math.sqrt(x * x + y * y + z * z),
+                    s, c, t,
+                    a00, a01, a02, a03,
+                    a10, a11, a12, a13,
+                    a20, a21, a22, a23,
+                    b00, b01, b02,
+                    b10, b11, b12,
+                    b20, b21, b22;
+                
+                if (len < 0.000001) { return null; }
+                
+                len = 1 / len;
+                x *= len;
+                y *= len;
+                z *= len;
+                
+                s = Math.sin(rad);
+                c = Math.cos(rad);
+                t = 1 - c;
+                
+                a00 = a[0]; a01 = a[1]; a02 = a[2]; a03 = a[3];
+                a10 = a[4]; a11 = a[5]; a12 = a[6]; a13 = a[7];
+                a20 = a[8]; a21 = a[9]; a22 = a[10]; a23 = a[11];
+                
+                // Construct the rotation matrix
+                b00 = x * x * t + c; b01 = y * x * t + z * s; b02 = z * x * t - y * s;
+                b10 = x * y * t - z * s; b11 = y * y * t + c; b12 = z * y * t + x * s;
+                b20 = x * z * t + y * s; b21 = y * z * t - x * s; b22 = z * z * t + c;
+                
+                // Perform rotation
+                out[0] = a00 * b00 + a10 * b01 + a20 * b02;
+                out[1] = a01 * b00 + a11 * b01 + a21 * b02;
+                out[2] = a02 * b00 + a12 * b01 + a22 * b02;
+                out[3] = a03 * b00 + a13 * b01 + a23 * b02;
+                out[4] = a00 * b10 + a10 * b11 + a20 * b12;
+                out[5] = a01 * b10 + a11 * b11 + a21 * b12;
+                out[6] = a02 * b10 + a12 * b11 + a22 * b12;
+                out[7] = a03 * b10 + a13 * b11 + a23 * b12;
+                out[8] = a00 * b20 + a10 * b21 + a20 * b22;
+                out[9] = a01 * b20 + a11 * b21 + a21 * b22;
+                out[10] = a02 * b20 + a12 * b21 + a22 * b22;
+                out[11] = a03 * b20 + a13 * b21 + a23 * b22;
+                
+                if (a !== out) {
+                    out[12] = a[12];
+                    out[13] = a[13];
+                    out[14] = a[14];
+                    out[15] = a[15];
+                }
+                
+                return out;
+            }
+        };
+
+        // Initialize the game canvas
+        const canvas = document.getElementById('gameCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            alert("WebGL not supported in this browser!");
+            throw "WebGL not supported";
+        }
+
+        // Set canvas size to window size
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            
+            // Update projection matrix when resizing
+            mat4.perspective(projectionMatrix, Math.PI / 3, canvas.width / canvas.height, 0.1, 100.0);
+            gl.uniformMatrix4fv(uProjectionMatrix, false, projectionMatrix);
+        }
+        
+        window.addEventListener('resize', resizeCanvas);
+
+        // Game constants
+        const CHUNK_SIZE = 18;
+        const CHUNK_HEIGHT = 64;
+        const CHUNK_RADIUS = 8;
+        const BLOCK_SIZE = 1.2;
+        const GRAVITY = 0.025;
+        const JUMP_FORCE = 0.99;
+        const PLAYER_HEIGHT = 1.8;
+        const PLAYER_WIDTH = 0.6;
+        const PLAYER_SPEED = 0.2;
+        const TERRAIN_SCALE = 30;  // Scale of terrain noise
+        const TERRAIN_AMPLITUDE = 15;  // Height range of terrain
+        //block types
+        const BLOCK_TYPES = {
+    AIR: 0,
+    GRASS: 1,
+    DIRT: 2,
+    STONE: 3,
+    SAND: 4,
+    WOOD: 5,
+    WATER: 6 // Add water block type
+};
+
+const BLOCK_TYPE_NAMES = {
+    [BLOCK_TYPES.GRASS]: "Grass",
+    [BLOCK_TYPES.DIRT]: "Dirt",
+    [BLOCK_TYPES.STONE]: "Stone",
+    [BLOCK_TYPES.SAND]: "Sand",
+    [BLOCK_TYPES.WOOD]: "Wood",
+    [BLOCK_TYPES.WATER]: "Water" // Add water block name
+};
+        // Inventory setup
+const inventory = [
+    { type: BLOCK_TYPES.GRASS, name: "Grass", count: 10 },
+    { type: BLOCK_TYPES.DIRT, name: "Dirt", count: 10 },
+    { type: BLOCK_TYPES.STONE, name: "Stone", count: 10 },
+    { type: BLOCK_TYPES.SAND, name: "Sand", count: 10 },
+    { type: BLOCK_TYPES.WOOD, name: "Wood", count: 10 }
+];
+
+let selectedInventoryIndex = 0;
+
+// Render inventory
+function renderInventory() {
+    const inventoryContainer = document.getElementById('inventoryContainer');
+    inventoryContainer.innerHTML = '';
+
+    inventory.forEach((item, index) => {
+        const div = document.createElement('div');
+        div.className = 'inventory-item';
+        if (index === selectedInventoryIndex) {
+            div.classList.add('selected');
+        }
+        div.textContent = item.name; // Display block name
+        div.style.backgroundColor = getBlockColor(item.type); // Set background color based on block type
+
+        const countDiv = document.createElement('div');
+        countDiv.className = 'count';
+        countDiv.textContent = item.count;
+        div.appendChild(countDiv);
+
+        div.addEventListener('click', () => {
+            selectedInventoryIndex = index;
+            currentBlockType = item.type;
+            document.getElementById('currentBlock').textContent = item.name;
+            renderInventory();
+        });
+        inventoryContainer.appendChild(div);
+    });
+}
+
+// Helper function to get block colors
+function getBlockColor(blockType) {
+    switch (blockType) {
+        case BLOCK_TYPES.GRASS:
+            return '#228B22'; // Green for grass
+        case BLOCK_TYPES.DIRT:
+            return '#8B4513'; // Brown for dirt
+        case BLOCK_TYPES.STONE:
+            return '#808080'; // Gray for stone
+        case BLOCK_TYPES.SAND:
+            return '#F4A460'; // Sandy color
+        case BLOCK_TYPES.WOOD:
+            return '#A0522D'; // Wood color
+        case BLOCK_TYPES.WATER:
+            return 'rgba(0, 0, 255, 0.5)'; // Semi-transparent blue for water
+        default:
+            return '#000000'; // Black for unknown types
+    }
+}
+// Initialize inventory
+renderInventory();
+        
+        let currentBlockType = BLOCK_TYPES.STONE;
+        document.getElementById('currentBlock').textContent = BLOCK_TYPE_NAMES[currentBlockType];
+
+        // Player state
+        let player = {
+            position: [0, 20, 0],
+            rotation: [0, 0], // [pitch, yaw]
+            velocity: [0, 0, 0],
+            onGround: false,
+            lookSpeed: 0.003,
+            moveSpeed: 0.1,
+            jumpSpeed: 0.6
+        };
+
+        // Camera setup
+        let camera = {
+            direction: [0, 0, 2], // Forward vector
+            right: [2, 0, 0],     // Right vector
+            up: [0, 2, 0]         // Up vector
+        };
+
+        // Input handling
+        const keys = {};
+        
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            
+            // Block selection
+            if (e.code === 'KeyE') {
+                // Cycle through block types
+                const blockTypes = Object.values(BLOCK_TYPES).filter(type => type !== BLOCK_TYPES.AIR);
+                const currentIndex = blockTypes.indexOf(currentBlockType);
+                currentBlockType = blockTypes[(currentIndex + 1) % blockTypes.length];
+                document.getElementById('currentBlock').textContent = BLOCK_TYPE_NAMES[currentBlockType];
+            }
+            document.addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+
+    // Block selection
+    if (e.code === 'KeyE') {
+        // Cycle through block types
+        const blockTypes = Object.values(BLOCK_TYPES).filter(type => type !== BLOCK_TYPES.AIR);
+        const currentIndex = blockTypes.indexOf(currentBlockType);
+        currentBlockType = blockTypes[(currentIndex + 1) % blockTypes.length];
+        document.getElementById('currentBlock').textContent = BLOCK_TYPE_NAMES[currentBlockType];
+    }
+// Inventory selection with number keys (1-5)
+if (e.code.startsWith('Digit')) {
+    const index = parseInt(e.code.replace('Digit', ''), 10) - 1;
+    if (index >= 0 && index < inventory.length) {
+        selectedInventoryIndex = index;
+        currentBlockType = inventory[index].type;
+        document.getElementById('currentBlock').textContent = inventory[index].name;
+        renderInventory();
+    }
+}
+});
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        // Mouse look
+        document.addEventListener('mousemove', (e) => {
+
+            if (document.pointerLockElement === canvas) {
+                player.rotation[1] -= e.movementX * player.lookSpeed;
+                player.rotation[0] -= e.movementY * player.lookSpeed;
+                
+                // Clamp pitch to prevent camera flipping
+                player.rotation[0] = Math.max(Math.min(player.rotation[0], Math.PI / 2 - 0.1), -Math.PI / 2 + 0.1);
+                
+                // Update camera vectors
+                updateCameraVectors();
+            }
+        });
+
+        // Lock pointer when clicking canvas
+        canvas.addEventListener('click', () => {
+            if (document.pointerLockElement !== canvas) {
+                canvas.requestPointerLock();
+            }
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+    if (document.pointerLockElement === canvas) {
+        const ray = castRay();
+        if (e.button === 0) { // Left click - break block
+            if (ray.hit) {
+                const blockType = getBlock(ray.blockX, ray.blockY, ray.blockZ);
+                if (blockType !== BLOCK_TYPES.AIR) {
+                    setBlock(ray.blockX, ray.blockY, ray.blockZ, BLOCK_TYPES.AIR);
+
+                    // Add the block to the inventory
+                    const inventoryItem = inventory.find(item => item.type === blockType);
+                    if (inventoryItem) {
+                        inventoryItem.count++;
+                        renderInventory();
+                    }
+                }
+            }
+        } else if (e.button === 2) { // Right click - place block
+            if (ray.hit) {
+                const x = ray.blockX + ray.normal[0];
+                const y = ray.blockY + ray.normal[1];
+                const z = ray.blockZ + ray.normal[2];
+
+                const selectedItem = inventory[selectedInventoryIndex];
+                if (selectedItem && selectedItem.count > 0) {
+                    setBlock(x, y, z, selectedItem.type);
+                    selectedItem.count--;
+                    renderInventory();
+                }
+            }
+        }
+    }
+});
+
+        // Prevent right-click context menu
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+
+        // Simple perlin-like noise function for terrain
+        function simplex2(x, z) {
+            const F2 = 0.5 * (Math.sqrt(3.0) - 1.0);
+            const G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
+            
+            const s = (x + z) * F2;
+            const i = Math.floor(x + s);
+            const j = Math.floor(z + s);
+            
+            const t = (i + j) * G2;
+            const X0 = i - t;
+            const Z0 = j - t;
+            const x0 = x - X0;
+            const z0 = z - Z0;
+            
+            let i1, j1;
+            if (x0 > z0) {
+                i1 = 1;
+                j1 = 0;
+            } else {
+                i1 = 0;
+                j1 = 1;
+            }
+            
+            const x1 = x0 - i1 + G2;
+            const z1 = z0 - j1 + G2;
+            const x2 = x0 - 1.0 + 2.0 * G2;
+            const z2 = z0 - 1.0 + 2.0 * G2;
+            
+            // Hash coordinates
+            const h0 = hash(i, j) % 12;
+            const h1 = hash(i + i1, j + j1) % 12;
+            const h2 = hash(i + 1, j + 1) % 12;
+            
+            // Noise contributions from the three corners
+            const t0 = 0.5 - x0 * x0 - z0 * z0;
+            let n0 = 0;
+            if (t0 >= 0) {
+                n0 = t0 * t0 * t0 * t0 * dot(grad3[h0], x0, z0);
+            }
+            
+            const t1 = 0.5 - x1 * x1 - z1 * z1;
+            let n1 = 0;
+            if (t1 >= 0) {
+                n1 = t1 * t1 * t1 * t1 * dot(grad3[h1], x1, z1);
+            }
+            
+            const t2 = 0.5 - x2 * x2 - z2 * z2;
+            let n2 = 0;
+            if (t2 >= 0) {
+                n2 = t2 * t2 * t2 * t2 * dot(grad3[h2], x2, z2);
+            }
+            
+            // Scale the result to [-1, 1]
+            return 70.0 * (n0 + n1 + n2);
+        }
+        
+        // Simple hash function for noise
+        function hash(i, j) {
+            return (i * 73856093 ^ j * 19349663) & 0x7fffffff;
+        }
+        
+        const grad3 = [
+            [1,1], [-1,1], [1,-1], [-1,-1],
+            [1,0], [-1,0], [0,1], [0,-1],
+            [1,1], [-1,1], [1,-1], [-1,-1]
+        ];
+        
+        function dot(g, x, y) {
+            return g[0] * x + g[1] * y;
+        }
+        
+        // Terrain generation functions
+        function getTerrainHeight(x, z) {
+            // Add some noise at different frequencies for more natural terrain
+            const h1 = simplex2(x / 100, z / 100) * 10;
+            const h2 = simplex2(x / 50, z / 50) * 5;
+            const h3 = simplex2(x / 25, z / 25) * 2.5;
+            
+            // Combine and scale
+            return Math.floor(20 + h1 + h2 + h3);
+        }
+        
+        // World storage - sparse 3D array using string keys
+        const world = {};
+        
+        function getBlock(x, y, z) {
+            const key = `${Math.floor(x)},${Math.floor(y)},${Math.floor(z)}`;
+            return world[key] !== undefined ? world[key] : BLOCK_TYPES.AIR;
+        }
+        
+        function setBlock(x, y, z, type) {
+            const key = `${Math.floor(x)},${Math.floor(y)},${Math.floor(z)}`;
+            
+            if (type === BLOCK_TYPES.AIR) {
+                delete world[key];
+            } else {
+                world[key] = type;
+            }
+        }
+        
+        // Generate initial terrain
+        function generateChunk(chunkX, chunkZ) {
+    const startX = chunkX * CHUNK_SIZE;
+    const startZ = chunkZ * CHUNK_SIZE;
+    const SEA_LEVEL = 15; // Define sea level
+
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+        for (let z = 0; z < CHUNK_SIZE; z++) {
+            const worldX = startX + x;
+            const worldZ = startZ + z;
+            const height = getTerrainHeight(worldX, worldZ);
+
+            // Generate terrain layers
+            for (let y = 0; y < height; y++) {
+                let blockType;
+
+                if (y === height - 1) {
+                    blockType = BLOCK_TYPES.GRASS; // Top layer is grass
+                } else if (y > height - 4) {
+                    blockType = BLOCK_TYPES.DIRT; // Dirt layer
+                } else if (y > 5) {
+                    blockType = BLOCK_TYPES.STONE; // Stone layer
+                } else {
+                    blockType = BLOCK_TYPES.STONE; // Bedrock layer
+                }
+
+                setBlock(worldX, y, worldZ, blockType);
+            }
+
+            // Add water below sea level
+            for (let y = height; y < SEA_LEVEL; y++) {
+                setBlock(worldX, y, worldZ, BLOCK_TYPES.WATER);
+            }
+
+            // Randomly generate ponds
+            if (Math.random() < 0.02 && height < SEA_LEVEL - 2) {
+                for (let px = -2; px <= 2; px++) {
+                    for (let pz = -2; pz <= 2; pz++) {
+                        for (let py = height; py < height + 2; py++) {
+                            if (Math.sqrt(px * px + pz * pz) <= 2) {
+                                setBlock(worldX + px, py, worldZ + pz, BLOCK_TYPES.WATER);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return true;
+}     
+        
+        // Load chunks around player
+        function loadChunks() {
+            const playerChunkX = Math.floor(player.position[0] / CHUNK_SIZE);
+            const playerChunkZ = Math.floor(player.position[2] / CHUNK_SIZE);
+            
+            for (let dx = -CHUNK_RADIUS; dx <= CHUNK_RADIUS; dx++) {
+                for (let dz = -CHUNK_RADIUS; dz <= CHUNK_RADIUS; dz++) {
+                    const chunkX = playerChunkX + dx;
+                    const chunkZ = playerChunkZ + dz;
+                    const key = `${chunkX},${chunkZ}`;
+                    
+                    if (!loadedChunks[key]) {
+                        loadedChunks[key] = generateChunk(chunkX, chunkZ);
+                    }
+                }
+            }
+        }
+        
+        // Keep track of which chunks are loaded
+        const loadedChunks = {};
+        function updateWaterFlow() {
+    const newWaterBlocks = [];
+
+    for (const key in world) {
+        const [x, y, z] = key.split(',').map(Number);
+        if (world[key] === BLOCK_TYPES.WATER) {
+            // Check adjacent blocks
+            const neighbors = [
+                [x + 1, y, z],
+                [x - 1, y, z],
+                [x, y, z + 1],
+                [x, y, z - 1],
+                [x, y - 1, z] // Allow water to flow downward
+            ];
+
+            for (const [nx, ny, nz] of neighbors) {
+                const neighborKey = `${nx},${ny},${nz}`;
+                if (!world[neighborKey] || world[neighborKey] === BLOCK_TYPES.AIR) {
+                    newWaterBlocks.push(neighborKey);
+                }
+            }
+        }
+    }
+
+    // Add new water blocks
+    for (const key of newWaterBlocks) {
+        world[key] = BLOCK_TYPES.WATER;
+    }
+}
+        
+        // Raycasting for block interaction
+        function castRay() {
+            const MAX_DISTANCE = 5;
+            const STEP_SIZE = 0.1;
+            
+            const result = {
+                hit: false,
+                blockX: 0,
+                blockY: 0,
+                blockZ: 0,
+                distance: 0,
+                normal: [0, 0, 0]
+            };
+            
+            // Start at player's eye position
+            const rayStart = [
+                player.position[0],
+                player.position[1] + 1.6, // Eye height
+                player.position[2]
+            ];
+            
+            // Ray direction from camera
+            const rayDir = [
+                Math.sin(player.rotation[1]) * Math.cos(player.rotation[0]),
+                -Math.sin(player.rotation[0]),
+                Math.cos(player.rotation[1]) * Math.cos(player.rotation[0])
+            ];
+            
+            // Normalize ray direction
+            const length = Math.sqrt(rayDir[0] * rayDir[0] + rayDir[1] * rayDir[1] + rayDir[2] * rayDir[2]);
+            rayDir[0] /= length;
+            rayDir[1] /= length;
+            rayDir[2] /= length;
+            
+            // Step along ray
+            let distance = 0;
+            let lastX = Math.floor(rayStart[0]);
+            let lastY = Math.floor(rayStart[1]);
+            let lastZ = Math.floor(rayStart[2]);
+            
+            while (distance < MAX_DISTANCE) {
+                const rayX = rayStart[0] + rayDir[0] * distance;
+                const rayY = rayStart[1] + rayDir[1] * distance;
+                const rayZ = rayStart[2] + rayDir[2] * distance;
+                
+                const blockX = Math.floor(rayX);
+                const blockY = Math.floor(rayY);
+                const blockZ = Math.floor(rayZ);
+                
+                // Check if we've moved to a new block
+                if (blockX !== lastX || blockY !== lastY || blockZ !== lastZ) {
+                    // Check if this block is solid
+                    const blockType = getBlock(blockX, blockY, blockZ);
+                    if (blockType !== BLOCK_TYPES.AIR) {
+                        result.hit = true;
+                        result.blockX = blockX;
+                        result.blockY = blockY;
+                        result.blockZ = blockZ;
+                        result.distance = distance;
+                        
+                        // Calculate hit normal (which face was hit)
+                        if (blockX > lastX) result.normal = [-1, 0, 0];
+                        else if (blockX < lastX) result.normal = [1, 0, 0];
+                        else if (blockY > lastY) result.normal = [0, -1, 0];
+                        else if (blockY < lastY) result.normal = [0, 1, 0];
+                        else if (blockZ > lastZ) result.normal = [0, 0, -1];
+                        else if (blockZ < lastZ) result.normal = [0, 0, 1];
+                        
+                        break;
+                    }
+                    
+                    lastX = blockX;
+                    lastY = blockY;
+                    lastZ = blockZ;
+                }
+                
+                distance += STEP_SIZE;
+            }
+            
+            return result;
+        }
+        
+        // Update camera vectors based on player rotation
+        function updateCameraVectors() {
+            const yaw = player.rotation[1];
+            const pitch = player.rotation[0];
+            
+            // Forward vector
+            camera.direction = [
+                Math.sin(yaw) * Math.cos(pitch),
+                -Math.sin(pitch),
+                Math.cos(yaw) * Math.cos(pitch)
+            ];
+            
+            // Right vector
+            camera.right = [
+                Math.cos(yaw),
+                0,
+                -Math.sin(yaw)
+            ];
+            
+            // Up vector (cross product of right and direction)
+            camera.up = [
+                camera.right[1] * camera.direction[2] - camera.right[2] * camera.direction[1],
+                camera.right[2] * camera.direction[0] - camera.right[0] * camera.direction[2],
+                camera.right[0] * camera.direction[1] - camera.right[1] * camera.direction[0]
+            ];
+        }
+        
+        // Check if player is colliding with blocks
+        function checkCollision(position) {
+            const halfWidth = PLAYER_WIDTH / 2; }
+            // Check if player is colliding with blocks
+        function checkCollision(position) {
+            const halfWidth = PLAYER_WIDTH / 2;
+            
+            // Check blocks around player
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = 0; dy <= 2; dy++) {
+                    for (let dz = -1; dz <= 1; dz++) {
+                        // Calculate block position
+                        const blockX = Math.floor(position[0] + dx * halfWidth);
+                        const blockY = Math.floor(position[1] + dy);
+                        const blockZ = Math.floor(position[2] + dz * halfWidth);
+                        
+                        // Skip air blocks
+                        const blockType = getBlock(blockX, blockY, blockZ);
+                        if (blockType === BLOCK_TYPES.AIR) {
+                            continue;
+                        }
+                        
+                        // Simple box collision
+                        const blockMinX = blockX;
+                        const blockMaxX = blockX + 1;
+                        const blockMinY = blockY;
+                        const blockMaxY = blockY + 1;
+                        const blockMinZ = blockZ;
+                        const blockMaxZ = blockZ + 1;
+                        
+                        const playerMinX = position[0] - halfWidth;
+                        const playerMaxX = position[0] + halfWidth;
+                        const playerMinY = position[1];
+                        const playerMaxY = position[1] + PLAYER_HEIGHT;
+                        const playerMinZ = position[2] - halfWidth;
+                        const playerMaxZ = position[2] + halfWidth;
+                        
+                        // Check for overlap
+                        if (playerMaxX > blockMinX && playerMinX < blockMaxX &&
+                            playerMaxY > blockMinY && playerMinY < blockMaxY &&
+                            playerMaxZ > blockMinZ && playerMinZ < blockMaxZ) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            
+            return false;
+        }
+        
+        // Physics and movement
+        function updatePlayer(deltaTime) {
+            // Apply gravity
+            if (!player.onGround) {
+                player.velocity[1] -= GRAVITY;
+            }
+            
+            // Handle jump
+            if (keys['Space'] && player.onGround) {
+                player.velocity[1] = JUMP_FORCE;
+                player.onGround = false;
+            }
+            
+            // Movement direction based on camera
+            let moveX = 0;
+            let moveZ = 0;
+            
+            if (keys['KeyW']) moveZ += 1;
+            if (keys['KeyS']) moveZ -= 1;
+            if (keys['KeyD']) moveX -= 1;
+            if (keys['KeyA']) moveX += 1;
+            
+            // Calculate movement vector
+            const moveVector = [0, 0, 0];
+            
+            if (moveX !== 0 || moveZ !== 0) {
+                // Forward/backward
+                moveVector[0] += camera.direction[0] * moveZ * player.moveSpeed;
+                moveVector[2] += camera.direction[2] * moveZ * player.moveSpeed;
+                
+                // Strafe
+                moveVector[0] += camera.right[0] * moveX * player.moveSpeed;
+                moveVector[2] += camera.right[2] * moveX * player.moveSpeed;
+                
+                // Normalize movement vector if moving diagonally
+                const length = Math.sqrt(moveVector[0] * moveVector[0] + moveVector[2] * moveVector[2]);
+                if (length > 0) {
+                    moveVector[0] /= length;
+                    moveVector[2] /= length;
+                    
+                    moveVector[0] *= player.moveSpeed;
+                    moveVector[2] *= player.moveSpeed;
+                }
+            }
+            
+            // Apply movement
+            const newPosition = [
+                player.position[0] + moveVector[0] + player.velocity[0],
+                player.position[1] + player.velocity[1],
+                player.position[2] + moveVector[2] + player.velocity[2]
+            ];
+            
+            // Simple collision response
+            // Try X movement
+            let testPosition = [
+                newPosition[0],
+                player.position[1],
+                player.position[2]
+            ];
+            
+            if (!checkCollision(testPosition)) {
+                player.position[0] = testPosition[0];
+            }
+            
+            // Try Z movement
+            testPosition = [
+                player.position[0],
+                player.position[1],
+                newPosition[2]
+            ];
+            
+            if (!checkCollision(testPosition)) {
+                player.position[2] = testPosition[2];
+            }
+            
+            // Try Y movement
+            testPosition = [
+                player.position[0],
+                newPosition[1],
+                player.position[2]
+            ];
+            
+            if (!checkCollision(testPosition)) {
+                player.position[1] = testPosition[1];
+                player.onGround = false;
+            } else {
+                // Hit the ground or ceiling
+                if (player.velocity[1] < 0) {
+                    player.onGround = true;
+                }
+                player.velocity[1] = 0;
+            }
+            
+            // Friction
+            player.velocity[0] *= 0.9;
+            player.velocity[2] *= 0.9;
+            
+            // Update player position display
+            document.getElementById('positionDisplay').textContent = 
+                `Position: ${player.position[0].toFixed(2)}, ${player.position[1].toFixed(2)}, ${player.position[2].toFixed(2)}`;
+        }
+        
+        // WebGL setup
+        // Vertex shader program
+        const vsSource = `
+            attribute vec3 aVertexPosition;
+            attribute vec3 aVertexNormal;
+            attribute vec2 aTextureCoord;
+            
+            uniform mat4 uModelViewMatrix;
+            uniform mat4 uProjectionMatrix;
+            uniform mat4 uNormalMatrix;
+            
+            varying vec3 vNormal;
+            varying vec2 vTextureCoord;
+            varying vec3 vPosition;
+            
+            void main(void) {
+                gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aVertexPosition, 1.0);
+                vNormal = (uNormalMatrix * vec4(aVertexNormal, 1.0)).xyz;
+                vTextureCoord = aTextureCoord;
+                vPosition = aVertexPosition;
+            }
+        `;
+        
+        // Fragment shader program
+        const fsSource = `
+    precision mediump float;
+
+    varying vec3 vNormal;
+    varying vec2 vTextureCoord;
+    varying vec3 vPosition;
+
+    uniform sampler2D uSampler;
+    uniform int uBlockType;
+
+    void main(void) {
+        vec3 normal = normalize(vNormal);
+        vec3 lightDirection = normalize(vec3(0.5, 1.0, 0.5));
+
+        // Ambient lighting
+        float ambient = 0.3;
+
+        // Diffuse lighting
+        float diffuse = max(dot(normal, lightDirection), 0.0);
+
+        // Simple block shading based on type
+        vec4 baseColor;
+
+        // Color based on block type
+        if (uBlockType == 1) {
+            // Grass - green top, brown sides
+            if (abs(normal.y) > 0.9) {
+                baseColor = vec4(0.2, 0.8, 0.2, 1.0); // Green top
+            } else {
+                baseColor = vec4(0.6, 0.4, 0.2, 1.0); // Brown sides
+            }
+        } else if (uBlockType == 2) {
+            baseColor = vec4(0.6, 0.4, 0.2, 1.0); // Dirt
+        } else if (uBlockType == 3) {
+            baseColor = vec4(0.5, 0.5, 0.5, 1.0); // Stone
+        } else if (uBlockType == 4) {
+            baseColor = vec4(0.9, 0.8, 0.5, 1.0); // Sand
+        } else if (uBlockType == 5) {
+            baseColor = vec4(0.6, 0.3, 0.1, 1.0); // Wood
+        } else if (uBlockType == 6) {
+            baseColor = vec4(0.0, 0.0, 1.0, 0.5); // Semi-transparent blue for water
+        } else {
+            baseColor = vec4(1.0, 0.0, 1.0, 1.0); // Error color (pink)
+        }
+
+        // Final color with lighting
+        gl_FragColor = baseColor * (ambient + diffuse);
+    }
+`;
+        
+        // Initialize a shader program
+        function initShaderProgram(gl, vsSource, fsSource) {
+            const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+            const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+            
+            // Create the shader program
+            const shaderProgram = gl.createProgram();
+            gl.attachShader(shaderProgram, vertexShader);
+            gl.attachShader(shaderProgram, fragmentShader);
+            gl.linkProgram(shaderProgram);
+            
+            // If creating the shader program failed, alert
+            if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+                alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+                return null;
+            }
+            
+            return shaderProgram;
+        }
+        
+        // Create a shader
+        function loadShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            
+            // Send the source to the shader object
+            gl.shaderSource(shader, source);
+            
+            // Compile the shader program
+            gl.compileShader(shader);
+            
+            // See if it compiled successfully
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            
+            return shader;
+        }
+        
+        // Initialize buffers for a cube
+        function initBuffers(gl) {
+            // Vertex positions for a cube
+            const positions = [
+                // Front face
+                -0.5, -0.5,  0.5,
+                 0.5, -0.5,  0.5,
+                 0.5,  0.5,  0.5,
+                -0.5,  0.5,  0.5,
+                
+                // Back face
+                -0.5, -0.5, -0.5,
+                -0.5,  0.5, -0.5,
+                 0.5,  0.5, -0.5,
+                 0.5, -0.5, -0.5,
+                
+                // Top face
+                -0.5,  0.5, -0.5,
+                -0.5,  0.5,  0.5,
+                 0.5,  0.5,  0.5,
+                 0.5,  0.5, -0.5,
+                
+                // Bottom face
+                -0.5, -0.5, -0.5,
+                 0.5, -0.5, -0.5,
+                 0.5, -0.5,  0.5,
+                -0.5, -0.5,  0.5,
+                
+                // Right face
+                 0.5, -0.5, -0.5,
+                 0.5,  0.5, -0.5,
+                 0.5,  0.5,  0.5,
+                 0.5, -0.5,  0.5,
+                
+                // Left face
+                -0.5, -0.5, -0.5,
+                -0.5, -0.5,  0.5,
+                -0.5,  0.5,  0.5,
+                -0.5,  0.5, -0.5,
+            ];
+            
+            // Create and bind the position buffer
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+            
+            // Normals
+            const normals = [
+                // Front face
+                0.0,  0.0,  1.0,
+                0.0,  0.0,  1.0,
+                0.0,  0.0,  1.0,
+                0.0,  0.0,  1.0,
+                
+                // Back face
+                0.0,  0.0, -1.0,
+                0.0,  0.0, -1.0,
+                0.0,  0.0, -1.0,
+                0.0,  0.0, -1.0,
+                
+                // Top face
+                0.0,  1.0,  0.0,
+                0.0,  1.0,  0.0,
+                0.0,  1.0,  0.0,
+                0.0,  1.0,  0.0,
+                
+                // Bottom face
+                0.0, -1.0,  0.0,
+                0.0, -1.0,  0.0,
+                0.0, -1.0,  0.0,
+                0.0, -1.0,  0.0,
+                
+                // Right face
+                1.0,  0.0,  0.0,
+                1.0,  0.0,  0.0,
+                1.0,  0.0,  0.0,
+                1.0,  0.0,  0.0,
+                
+                // Left face
+                -1.0,  0.0,  0.0,
+                -1.0,  0.0,  0.0,
+                -1.0,  0.0,  0.0,
+                -1.0,  0.0,  0.0,
+            ];
+            
+            // Create and bind the normal buffer
+            const normalBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+            
+            // Texture coordinates
+            const textureCoordinates = [
+                // Front face
+                0.0, 0.0,
+                1.0, 0.0,
+                1.0, 1.0,
+                0.0, 1.0,
+                
+                // Back face
+                1.0, 0.0,
+                1.0, 1.0,
+                0.0, 1.0,
+                0.0, 0.0,
+                
+                // Top face
+                0.0, 1.0,
+                0.0, 0.0,
+                1.0, 0.0,
+                1.0, 1.0,
+                
+                // Bottom face
+                1.0, 1.0,
+                0.0, 1.0,
+                0.0, 0.0,
+                1.0, 0.0,
+                
+                // Right face
+                1.0, 0.0,
+                1.0, 1.0,
+                0.0, 1.0,
+                0.0, 0.0,
+                
+                // Left face
+                0.0, 0.0,
+                1.0, 0.0,
+                1.0, 1.0,
+                0.0, 1.0,
+            ];
+            
+            // Create and bind the texture coordinate buffer
+            const textureCoordBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordinates), gl.STATIC_DRAW);
+            
+            // Element indices
+            const indices = [
+                0,  1,  2,    0,  2,  3,  // Front face
+                4,  5,  6,    4,  6,  7,  // Back face
+                8,  9, 10,    8, 10, 11,  // Top face
+                12, 13, 14,   12, 14, 15, // Bottom face
+                16, 17, 18,   16, 18, 19, // Right face
+                20, 21, 22,   20, 22, 23  // Left face
+            ];
+            
+            // Create and bind the element array buffer
+            const indexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+            
+            return {
+                position: positionBuffer,
+                normal: normalBuffer,
+                textureCoord: textureCoordBuffer,
+                indices: indexBuffer,
+                count: 36 // 6 faces * 2 triangles * 3 vertices each
+            };
+        }
+        
+        // Draw the scene
+        function drawScene(gl, programInfo, buffers, deltaTime) {
+    gl.clearColor(0.5, 0.7, 1.0, 1.0); // Sky blue
+    gl.clearDepth(1.0);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+
+    // Enable blending for transparent blocks like water
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    // Create the projection matrix
+    const projectionMatrix = mat4.create();
+    mat4.perspective(projectionMatrix, Math.PI / 3, canvas.width / canvas.height, 0.1, 100.0);
+
+    // Create the model-view matrix
+    const modelViewMatrix = mat4.create();
+
+    // Set camera position based on player
+    const eye = [
+        player.position[0],
+        player.position[1] + 1.6, // Eye height
+        player.position[2]
+    ];
+
+    // Look direction
+    const lookAt = [
+        eye[0] + camera.direction[0],
+        eye[1] + camera.direction[1],
+        eye[2] + camera.direction[2]
+    ];
+
+    mat4.lookAt(modelViewMatrix, eye, lookAt, [0, 1, 0]);
+
+    // Set the drawing position to the "identity" point
+    const viewMatrix = modelViewMatrix;
+
+    // Normal matrix
+    const normalMatrix = mat4.create();
+    mat4.identity(normalMatrix);
+
+    // Determine visible blocks
+    const visibleBlocks = [];
+
+    // Only render blocks near player
+    const renderDistance = 16;
+    const minX = Math.floor(player.position[0]) - renderDistance;
+    const maxX = Math.floor(player.position[0]) + renderDistance;
+    const minY = Math.max(0, Math.floor(player.position[1]) - renderDistance);
+    const maxY = Math.min(CHUNK_HEIGHT, Math.floor(player.position[1]) + renderDistance);
+    const minZ = Math.floor(player.position[2]) - renderDistance;
+    const maxZ = Math.floor(player.position[2]) + renderDistance;
+
+    for (let x = minX; x <= maxX; x++) {
+        for (let y = minY; y <= maxY; y++) {
+            for (let z = minZ; z <= maxZ; z++) {
+                const blockType = getBlock(x, y, z);
+
+                // Skip air blocks
+                if (blockType === BLOCK_TYPES.AIR) {
+                    continue;
+                }
+
+                // Only render blocks that have at least one exposed face
+                const hasExposedFace = (
+                    getBlock(x + 1, y, z) === BLOCK_TYPES.AIR ||
+                    getBlock(x - 1, y, z) === BLOCK_TYPES.AIR ||
+                    getBlock(x, y + 1, z) === BLOCK_TYPES.AIR ||
+                    getBlock(x, y - 1, z) === BLOCK_TYPES.AIR ||
+                    getBlock(x, y, z + 1) === BLOCK_TYPES.AIR ||
+                    getBlock(x, y, z - 1) === BLOCK_TYPES.AIR
+                );
+
+                if (hasExposedFace) {
+                    visibleBlocks.push({
+                        x: x,
+                        y: y,
+                        z: z,
+                        type: blockType
+                    });
+                }
+            }
+        }
+    }
+
+    // Draw each visible block
+    for (const block of visibleBlocks) {
+        // Enable blending only for water blocks
+        if (block.type === BLOCK_TYPES.WATER) {
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        } else {
+            gl.disable(gl.BLEND);
+        }
+
+        // Calculate model matrix for this block
+        const modelMatrix = mat4.create();
+        mat4.translate(modelMatrix, modelMatrix, [block.x + 0.5, block.y + 0.5, block.z + 0.5]);
+
+        // Combine view and model matrices
+        const blockModelViewMatrix = mat4.create();
+        mat4.copy(blockModelViewMatrix, viewMatrix);
+        mat4.translate(blockModelViewMatrix, blockModelViewMatrix, [block.x + 0.5, block.y + 0.5, block.z + 0.5]);
+
+        // Set shader uniforms
+        gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, projectionMatrix);
+        gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, blockModelViewMatrix);
+        gl.uniformMatrix4fv(programInfo.uniformLocations.normalMatrix, false, normalMatrix);
+        gl.uniform1i(programInfo.uniformLocations.blockType, block.type);
+
+        // Set vertex attribute pointers
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+        gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.normal);
+        gl.vertexAttribPointer(programInfo.attribLocations.vertexNormal, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(programInfo.attribLocations.vertexNormal);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.textureCoord);
+        gl.vertexAttribPointer(programInfo.attribLocations.textureCoord, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(programInfo.attribLocations.textureCoord);
+
+        // Draw the cube
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indices);
+        gl.drawElements(gl.TRIANGLES, buffers.count, gl.UNSIGNED_SHORT, 0);
+    }
+
+    // Disable blending after rendering
+    gl.disable(gl.BLEND);
+}
+        
+        // Initialize WebGL
+        const shaderProgram = initShaderProgram(gl, vsSource, fsSource);
+        const programInfo = {
+            program: shaderProgram,
+            attribLocations: {
+                vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
+                vertexNormal: gl.getAttribLocation(shaderProgram, 'aVertexNormal'),
+                textureCoord: gl.getAttribLocation(shaderProgram, 'aTextureCoord'),
+            },
+            uniformLocations: {
+                projectionMatrix: gl.getUniformLocation(shaderProgram, 'uProjectionMatrix'),
+                modelViewMatrix: gl.getUniformLocation(shaderProgram, 'uModelViewMatrix'),
+                normalMatrix: gl.getUniformLocation(shaderProgram, 'uNormalMatrix'),
+                blockType: gl.getUniformLocation(shaderProgram, 'uBlockType'),
+                sampler: gl.getUniformLocation(shaderProgram, 'uSampler'),
+            },
+        };
+        
+        // Initialize the cube buffers
+        const buffers = initBuffers(gl);
+        
+        // Initialize projection matrix
+        const projectionMatrix = mat4.create();
+        const modelViewMatrix = mat4.create();
+        const uProjectionMatrix = gl.getUniformLocation(shaderProgram, 'uProjectionMatrix');
+        const uModelViewMatrix = gl.getUniformLocation(shaderProgram, 'uModelViewMatrix');
+        
+        // Generate initial world
+        generateChunk(0, 0);
+        
+        // Set initial canvas size
+        resizeCanvas();
+        
+        // Initialize camera vectors
+        updateCameraVectors();
+        
+        // FPS counter
+        let frameCount = 0;
+        let lastTime = 0;
+        let fps = 0;
+        
+        // Main game loop
+        function render(currentTime) {
+            currentTime *= 0.001;  // Convert to seconds
+            const deltaTime = currentTime - lastTime;
+            lastTime = currentTime;
+            
+            // Load chunks around player
+            loadChunks();
+            
+            // Update player position
+            updatePlayer(deltaTime);
+            
+            // Draw the scene
+            gl.useProgram(programInfo.program);
+            drawScene(gl, programInfo, buffers, deltaTime);
+            
+            // Calculate FPS
+            frameCount++;
+            if (currentTime > 1.0) {  // Update every second
+                fps = Math.round(frameCount / currentTime);
+                document.getElementById('fpsCounter').textContent = `FPS: ${fps}`;
+                frameCount = 0;
+                lastTime = 0;
+            }
+            
+            requestAnimationFrame(render);
+        }
+        
+        // Start the game loop
+        requestAnimationFrame(render);
+    </script>
+<div class="inventory-bar">
+    <div id="inventoryContainer"></div>
+</div>
+</body>
+</html>
