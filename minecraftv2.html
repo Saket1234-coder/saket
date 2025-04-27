@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>saket is = god coder</title>
+    <title>saket is god coder</title>
     <style>
 .inventory-bar {
     position: absolute;
@@ -108,6 +108,14 @@
     </div>
 
     <script>
+        
+        const mobs = []; // Array to store all mobs
+
+const MOB_TYPES = {
+    COW: "Cow",
+    SHEEP: "Sheep",
+    ZOMBIE: "Zombie"
+};
         // Matrix library - minimal implementation
         const mat4 = {
             create: function() {
@@ -369,11 +377,11 @@ const BLOCK_TYPE_NAMES = {
 };
         // Inventory setup
 const inventory = [
-    { type: BLOCK_TYPES.GRASS, name: "Grass", count: 10 },
-    { type: BLOCK_TYPES.DIRT, name: "Dirt", count: 10 },
-    { type: BLOCK_TYPES.STONE, name: "Stone", count: 10 },
-    { type: BLOCK_TYPES.SAND, name: "Sand", count: 10 },
-    { type: BLOCK_TYPES.WOOD, name: "Wood", count: 10 }
+    { type: BLOCK_TYPES.GRASS, name: "Grass", count: 0 },
+    { type: BLOCK_TYPES.DIRT, name: "Dirt", count: 0 },
+    { type: BLOCK_TYPES.STONE, name: "Stone", count: 0 },
+    { type: BLOCK_TYPES.SAND, name: "Sand", count: 0 },
+    { type: BLOCK_TYPES.WOOD, name: "Wood", count: 0 }
 ];
 
 let selectedInventoryIndex = 0;
@@ -654,11 +662,19 @@ if (e.code.startsWith('Digit')) {
             }
         }
         
-        // Generate initial terrain
-        function generateChunk(chunkX, chunkZ) {
+        // Generate initial terrain}
+        function spawnMob(type, x, y, z) {
+    mobs.push({
+        type: type,
+        position: [x, y, z],
+        velocity: [0, 0, 0], // For movement
+        onGround: false
+    });
+}
+function generateChunk(chunkX, chunkZ) {
     const startX = chunkX * CHUNK_SIZE;
     const startZ = chunkZ * CHUNK_SIZE;
-    const SEA_LEVEL = 15; // Define sea level
+    const SEA_LEVEL = 15;
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
         for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -674,10 +690,8 @@ if (e.code.startsWith('Digit')) {
                     blockType = BLOCK_TYPES.GRASS; // Top layer is grass
                 } else if (y > height - 4) {
                     blockType = BLOCK_TYPES.DIRT; // Dirt layer
-                } else if (y > 5) {
-                    blockType = BLOCK_TYPES.STONE; // Stone layer
                 } else {
-                    blockType = BLOCK_TYPES.STONE; // Bedrock layer
+                    blockType = BLOCK_TYPES.STONE; // Stone layer
                 }
 
                 setBlock(worldX, y, worldZ, blockType);
@@ -688,23 +702,16 @@ if (e.code.startsWith('Digit')) {
                 setBlock(worldX, y, worldZ, BLOCK_TYPES.WATER);
             }
 
-            // Randomly generate ponds
-            if (Math.random() < 0.02 && height < SEA_LEVEL - 2) {
-                for (let px = -2; px <= 2; px++) {
-                    for (let pz = -2; pz <= 2; pz++) {
-                        for (let py = height; py < height + 2; py++) {
-                            if (Math.sqrt(px * px + pz * pz) <= 2) {
-                                setBlock(worldX + px, py, worldZ + pz, BLOCK_TYPES.WATER);
-                            }
-                        }
-                    }
+            // Spawn mobs on grass blocks above sea level
+            if (Math.random() < 0.02 && height >= SEA_LEVEL) {
+                const blockAbove = getBlock(worldX, height, worldZ);
+                if (blockAbove === BLOCK_TYPES.AIR) {
+                    spawnMob(MOB_TYPES.COW, worldX, height + 1, worldZ);
                 }
             }
         }
     }
-
-    return true;
-}     
+}   
         
         // Load chunks around player
         function loadChunks() {
@@ -719,6 +726,7 @@ if (e.code.startsWith('Digit')) {
                     
                     if (!loadedChunks[key]) {
                         loadedChunks[key] = generateChunk(chunkX, chunkZ);
+             
                     }
                 }
             }
@@ -834,7 +842,16 @@ if (e.code.startsWith('Digit')) {
                 
                 distance += STEP_SIZE;
             }
-            
+            for (const mob of mobs) {
+    const mobX = Math.floor(mob.position[0]);
+    const mobY = Math.floor(mob.position[1]);
+    const mobZ = Math.floor(mob.position[2]);
+
+    if (blockX === mobX && blockY === mobY && blockZ === mobZ) {
+        console.log(`Hit a ${mob.type}`);
+        return { hit: true, mob: mob };
+    }
+}    
             return result;
         }
         
@@ -916,106 +933,161 @@ if (e.code.startsWith('Digit')) {
         }
         
         // Physics and movement
-        function updatePlayer(deltaTime) {
-            // Apply gravity
-            if (!player.onGround) {
-                player.velocity[1] -= GRAVITY;
-            }
-            
-            // Handle jump
-            if (keys['Space'] && player.onGround) {
-                player.velocity[1] = JUMP_FORCE;
-                player.onGround = false;
-            }
-            
-            // Movement direction based on camera
-            let moveX = 0;
-            let moveZ = 0;
-            
-            if (keys['KeyW']) moveZ += 1;
-            if (keys['KeyS']) moveZ -= 1;
-            if (keys['KeyD']) moveX -= 1;
-            if (keys['KeyA']) moveX += 1;
-            
-            // Calculate movement vector
-            const moveVector = [0, 0, 0];
-            
-            if (moveX !== 0 || moveZ !== 0) {
-                // Forward/backward
-                moveVector[0] += camera.direction[0] * moveZ * player.moveSpeed;
-                moveVector[2] += camera.direction[2] * moveZ * player.moveSpeed;
-                
-                // Strafe
-                moveVector[0] += camera.right[0] * moveX * player.moveSpeed;
-                moveVector[2] += camera.right[2] * moveX * player.moveSpeed;
-                
-                // Normalize movement vector if moving diagonally
-                const length = Math.sqrt(moveVector[0] * moveVector[0] + moveVector[2] * moveVector[2]);
-                if (length > 0) {
-                    moveVector[0] /= length;
-                    moveVector[2] /= length;
-                    
-                    moveVector[0] *= player.moveSpeed;
-                    moveVector[2] *= player.moveSpeed;
-                }
-            }
-            
-            // Apply movement
-            const newPosition = [
-                player.position[0] + moveVector[0] + player.velocity[0],
-                player.position[1] + player.velocity[1],
-                player.position[2] + moveVector[2] + player.velocity[2]
-            ];
-            
-            // Simple collision response
-            // Try X movement
-            let testPosition = [
-                newPosition[0],
-                player.position[1],
-                player.position[2]
-            ];
-            
-            if (!checkCollision(testPosition)) {
-                player.position[0] = testPosition[0];
-            }
-            
-            // Try Z movement
-            testPosition = [
-                player.position[0],
-                player.position[1],
-                newPosition[2]
-            ];
-            
-            if (!checkCollision(testPosition)) {
-                player.position[2] = testPosition[2];
-            }
-            
-            // Try Y movement
-            testPosition = [
-                player.position[0],
-                newPosition[1],
-                player.position[2]
-            ];
-            
-            if (!checkCollision(testPosition)) {
-                player.position[1] = testPosition[1];
-                player.onGround = false;
-            } else {
-                // Hit the ground or ceiling
-                if (player.velocity[1] < 0) {
-                    player.onGround = true;
-                }
-                player.velocity[1] = 0;
-            }
-            
-            // Friction
-            player.velocity[0] *= 0.9;
-            player.velocity[2] *= 0.9;
-            
-            // Update player position display
-            document.getElementById('positionDisplay').textContent = 
-                `Position: ${player.position[0].toFixed(2)}, ${player.position[1].toFixed(2)}, ${player.position[2].toFixed(2)}`;
+        function updateMobs(deltaTime) {
+    for (const mob of mobs) {
+        // Apply gravity
+        mob.velocity[1] -= GRAVITY;
+
+        // Calculate new position
+        const newPosition = [
+            mob.position[0] + mob.velocity[0],
+            mob.position[1] + mob.velocity[1],
+            mob.position[2] + mob.velocity[2]
+        ];
+
+        // Check for collisions with the ground
+        const blockBelow = getBlock(
+            Math.floor(newPosition[0]),
+            Math.floor(newPosition[1] - 1),
+            Math.floor(newPosition[2])
+        );
+
+        if (blockBelow !== BLOCK_TYPES.AIR && blockBelow !== BLOCK_TYPES.WATER) {
+            mob.position[1] = Math.floor(newPosition[1]);
+            mob.velocity[1] = 0;
+            mob.onGround = true;
+        } else {
+            mob.position[1] = newPosition[1];
+            mob.onGround = false;
         }
+
+        // Random movement on the ground
+        if (mob.onGround && Math.random() < 0.01) {
+            mob.velocity[0] = (Math.random() - 0.5) * 0.1; // Random X movement
+            mob.velocity[2] = (Math.random() - 0.5) * 0.1; // Random Z movement
+        }
+
+        mob.position[0] += mob.velocity[0];
+        mob.position[2] += mob.velocity[2];
+    }
+}
+function updatePlayer(deltaTime) {
+    const currentBlock = getBlock(
+        Math.floor(player.position[0]),
+        Math.floor(player.position[1]),
+        Math.floor(player.position[2])
+    );
+
+    // Apply gravity or buoyancy based on the block the player is in
+    if (currentBlock === BLOCK_TYPES.WATER) {
+        // Reduced gravity in water
+        player.velocity[1] -= GRAVITY * 0.2; // Apply reduced gravity
+        if (keys['Space']) {
+            player.velocity[1] += 0.02; // Allow swimming upward
+        } else {
+            player.velocity[1] -= 0.01; // Sink slowly if not swimming
+        }
+    } else {
+        // Normal gravity
+        if (!player.onGround) {
+            player.velocity[1] -= GRAVITY;
+        }
+
+        // Handle jump
+        if (keys['Space'] && player.onGround) {
+            player.velocity[1] = JUMP_FORCE;
+            player.onGround = false;
+        }
+    }
+
+    // Movement direction based on camera
+    let moveX = 0;
+    let moveZ = 0;
+
+    if (keys['KeyW']) moveZ += 1;
+    if (keys['KeyS']) moveZ -= 1;
+    if (keys['KeyD']) moveX -= 1;
+    if (keys['KeyA']) moveX += 1;
+
+    // Calculate movement vector
+    const moveVector = [0, 0, 0];
+
+    if (moveX !== 0 || moveZ !== 0) {
+        // Forward/backward
+        moveVector[0] += camera.direction[0] * moveZ * player.moveSpeed;
+        moveVector[2] += camera.direction[2] * moveZ * player.moveSpeed;
+
+        // Strafe
+        moveVector[0] += camera.right[0] * moveX * player.moveSpeed;
+        moveVector[2] += camera.right[2] * moveX * player.moveSpeed;
+
+        // Normalize movement vector if moving diagonally
+        const length = Math.sqrt(moveVector[0] * moveVector[0] + moveVector[2] * moveVector[2]);
+        if (length > 0) {
+            moveVector[0] /= length;
+            moveVector[2] /= length;
+
+            moveVector[0] *= player.moveSpeed;
+            moveVector[2] *= player.moveSpeed;
+        }
+    }
+
+    // Apply movement
+    const newPosition = [
+        player.position[0] + moveVector[0] + player.velocity[0],
+        player.position[1] + player.velocity[1],
+        player.position[2] + moveVector[2] + player.velocity[2]
+    ];
+
+    // Simple collision response
+    // Try X movement
+    let testPosition = [
+        newPosition[0],
+        player.position[1],
+        player.position[2]
+    ];
+
+    if (!checkCollision(testPosition)) {
+        player.position[0] = testPosition[0];
+    }
+
+    // Try Z movement
+    testPosition = [
+        player.position[0],
+        player.position[1],
+        newPosition[2]
+    ];
+
+    if (!checkCollision(testPosition)) {
+        player.position[2] = testPosition[2];
+    }
+
+    // Try Y movement
+    testPosition = [
+        player.position[0],
+        newPosition[1],
+        player.position[2]
+    ];
+
+    if (!checkCollision(testPosition)) {
+        player.position[1] = testPosition[1];
+        player.onGround = false;
+    } else {
+        // Hit the ground or ceiling
+        if (player.velocity[1] < 0) {
+            player.onGround = true;
+        }
+        player.velocity[1] = 0;
+    }
+
+    // Friction
+    player.velocity[0] *= 0.9;
+    player.velocity[2] *= 0.9;
+
+    // Update player position display
+    document.getElementById('positionDisplay').textContent =
+        `Position: ${player.position[0].toFixed(2)}, ${player.position[1].toFixed(2)}, ${player.position[2].toFixed(2)}`;
+}
         
         // WebGL setup
         // Vertex shader program
@@ -1290,7 +1362,58 @@ if (e.code.startsWith('Digit')) {
         }
         
         // Draw the scene
-        function drawScene(gl, programInfo, buffers, deltaTime) {
+        function renderMobs(gl, programInfo) {
+    for (const mob of mobs) {
+        const modelMatrix = mat4.create();
+        mat4.translate(modelMatrix, modelMatrix, mob.position);
+
+        // Set shader uniforms
+        gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, modelMatrix);
+        gl.uniform1i(programInfo.uniformLocations.blockType, BLOCK_TYPES.WOOD); // Use wood block for mob rendering
+
+        // Draw a cube for the mob
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+        gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.normal);
+        gl.vertexAttribPointer(programInfo.attribLocations.vertexNormal, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(programInfo.attribLocations.vertexNormal);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.textureCoord);
+        gl.vertexAttribPointer(programInfo.attribLocations.textureCoord, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(programInfo.attribLocations.textureCoord);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indices);
+        gl.drawElements(gl.TRIANGLES, buffers.count, gl.UNSIGNED_SHORT, 0);
+    }
+}function renderMobs(gl, programInfo) {
+    for (const mob of mobs) {
+        const modelMatrix = mat4.create();
+        mat4.translate(modelMatrix, modelMatrix, mob.position);
+
+        // Set shader uniforms
+        gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, modelMatrix);
+        gl.uniform1i(programInfo.uniformLocations.blockType, BLOCK_TYPES.WOOD); // Use wood block for mob rendering
+
+        // Draw a cube for the mob
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+        gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.normal);
+        gl.vertexAttribPointer(programInfo.attribLocations.vertexNormal, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(programInfo.attribLocations.vertexNormal);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.textureCoord);
+        gl.vertexAttribPointer(programInfo.attribLocations.textureCoord, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(programInfo.attribLocations.textureCoord);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indices);
+        gl.drawElements(gl.TRIANGLES, buffers.count, gl.UNSIGNED_SHORT, 0);
+    }
+}
+function drawScene(gl, programInfo, buffers, deltaTime) {
     gl.clearColor(0.5, 0.7, 1.0, 1.0); // Sky blue
     gl.clearDepth(1.0);
     gl.enable(gl.DEPTH_TEST);
@@ -1332,52 +1455,62 @@ if (e.code.startsWith('Digit')) {
     const normalMatrix = mat4.create();
     mat4.identity(normalMatrix);
 
-    // Determine visible blocks
-    const visibleBlocks = [];
+    // Cache visible blocks to avoid recalculating every frame
+    if (!drawScene.cachedVisibleBlocks || drawScene.lastPlayerPosition === undefined ||
+        Math.floor(player.position[0]) !== drawScene.lastPlayerPosition[0] ||
+        Math.floor(player.position[1]) !== drawScene.lastPlayerPosition[1] ||
+        Math.floor(player.position[2]) !== drawScene.lastPlayerPosition[2]) {
 
-    // Only render blocks near player
-    const renderDistance = 16;
-    const minX = Math.floor(player.position[0]) - renderDistance;
-    const maxX = Math.floor(player.position[0]) + renderDistance;
-    const minY = Math.max(0, Math.floor(player.position[1]) - renderDistance);
-    const maxY = Math.min(CHUNK_HEIGHT, Math.floor(player.position[1]) + renderDistance);
-    const minZ = Math.floor(player.position[2]) - renderDistance;
-    const maxZ = Math.floor(player.position[2]) + renderDistance;
+        drawScene.cachedVisibleBlocks = [];
+        const renderDistance = 8;
+        const minX = Math.floor(player.position[0]) - renderDistance;
+        const maxX = Math.floor(player.position[0]) + renderDistance;
+        const minY = Math.max(0, Math.floor(player.position[1]) - renderDistance);
+        const maxY = Math.min(CHUNK_HEIGHT, Math.floor(player.position[1]) + renderDistance);
+        const minZ = Math.floor(player.position[2]) - renderDistance;
+        const maxZ = Math.floor(player.position[2]) + renderDistance;
 
-    for (let x = minX; x <= maxX; x++) {
-        for (let y = minY; y <= maxY; y++) {
-            for (let z = minZ; z <= maxZ; z++) {
-                const blockType = getBlock(x, y, z);
+        for (let x = minX; x <= maxX; x++) {
+            for (let y = minY; y <= maxY; y++) {
+                for (let z = minZ; z <= maxZ; z++) {
+                    const blockType = getBlock(x, y, z);
 
-                // Skip air blocks
-                if (blockType === BLOCK_TYPES.AIR) {
-                    continue;
-                }
+                    // Skip air blocks
+                    if (blockType === BLOCK_TYPES.AIR) {
+                        continue;
+                    }
 
-                // Only render blocks that have at least one exposed face
-                const hasExposedFace = (
-                    getBlock(x + 1, y, z) === BLOCK_TYPES.AIR ||
-                    getBlock(x - 1, y, z) === BLOCK_TYPES.AIR ||
-                    getBlock(x, y + 1, z) === BLOCK_TYPES.AIR ||
-                    getBlock(x, y - 1, z) === BLOCK_TYPES.AIR ||
-                    getBlock(x, y, z + 1) === BLOCK_TYPES.AIR ||
-                    getBlock(x, y, z - 1) === BLOCK_TYPES.AIR
-                );
+                    // Only render blocks that have at least one exposed face
+                    const hasExposedFace = (
+                        getBlock(x + 1, y, z) === BLOCK_TYPES.AIR ||
+                        getBlock(x - 1, y, z) === BLOCK_TYPES.AIR ||
+                        getBlock(x, y + 1, z) === BLOCK_TYPES.AIR ||
+                        getBlock(x, y - 1, z) === BLOCK_TYPES.AIR ||
+                        getBlock(x, y, z + 1) === BLOCK_TYPES.AIR ||
+                        getBlock(x, y, z - 1) === BLOCK_TYPES.AIR
+                    );
 
-                if (hasExposedFace) {
-                    visibleBlocks.push({
-                        x: x,
-                        y: y,
-                        z: z,
-                        type: blockType
-                    });
+                    if (hasExposedFace) {
+                        drawScene.cachedVisibleBlocks.push({
+                            x: x,
+                            y: y,
+                            z: z,
+                            type: blockType
+                        });
+                    }
                 }
             }
         }
+
+        drawScene.lastPlayerPosition = [
+            Math.floor(player.position[0]),
+            Math.floor(player.position[1]),
+            Math.floor(player.position[2])
+        ];
     }
 
     // Draw each visible block
-    for (const block of visibleBlocks) {
+    for (const block of drawScene.cachedVisibleBlocks) {
         // Enable blending only for water blocks
         if (block.type === BLOCK_TYPES.WATER) {
             gl.enable(gl.BLEND);
@@ -1421,6 +1554,9 @@ if (e.code.startsWith('Digit')) {
 
     // Disable blending after rendering
     gl.disable(gl.BLEND);
+
+    // Render mobs
+    renderMobs(gl, programInfo);
 }
         
         // Initialize WebGL
@@ -1475,6 +1611,7 @@ if (e.code.startsWith('Digit')) {
             
             // Update player position
             updatePlayer(deltaTime);
+            updateMobs(deltaTime);
             
             // Draw the scene
             gl.useProgram(programInfo.program);
